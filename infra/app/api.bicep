@@ -2,7 +2,7 @@ param environmentName string
 param location string = resourceGroup().location
 
 param allowedOrigins array = []
-param applicationInsightsName string
+param applicationInsightsName string = ''
 param appServicePlanId string
 param appSettings object = {}
 param keyVaultName string
@@ -10,7 +10,7 @@ param serviceName string = 'api'
 param storageAccountName string
 
 module api '../core/host/functions-dotnet.bicep' = {
-  name: '${serviceName}-functions-csharp-isolated-module'
+  name: '${serviceName}-functions-csharp-module'
   params: {
     environmentName: environmentName
     location: location
