@@ -28,6 +28,20 @@ module api './app/api.bicep' = {
     keyVaultName: keyVault.outputs.keyVaultName
     storageAccountName: storage.outputs.name
     allowedOrigins: [ web.outputs.WEB_URI ]
+    appSettings: {
+      AZURE_SQL_CONNECTION_STRING_KEY: sqlServer.outputs.sqlConnectionStringKey
+    }
+  }
+}
+
+// Give the API access to KeyVault
+module apiKeyVaultAccess './core/security/keyvault-access.bicep' = {
+  name: 'api-keyvault-access'
+  params: {
+    environmentName: environmentName
+    location: location
+    keyVaultName: keyVault.outputs.keyVaultName
+    principalId: api.outputs.API_IDENTITY_PRINCIPAL_ID
   }
 }
 
@@ -43,15 +57,6 @@ module sqlServer './app/db.bicep' = {
   }
 }
 
-// Configure api to use sql
-module apiSqlServerConfig './core/host/appservice-config-sqlserver.bicep' = {
-  name: 'api-sqlserver-config'
-  params: {
-    appServiceName: api.outputs.API_NAME
-    sqlConnectionStringKey: sqlServer.outputs.sqlConnectionStringKey
-  }
-}
-
 // Backing storage for Azure functions backend API
 module storage './core/storage/storage-account.bicep' = {
   name: 'storage'
@@ -62,11 +67,15 @@ module storage './core/storage/storage-account.bicep' = {
 }
 
 // Create an App Service Plan to group applications under the same payment plan and SKU
-module appServicePlan './core/host/appserviceplan-functions.bicep' = {
+module appServicePlan './core/host/appserviceplan.bicep' = {
   name: 'appserviceplan'
   params: {
     environmentName: environmentName
     location: location
+    sku: {
+      name: 'Y1'
+      tier: 'Dynamic'
+    }
   }
 }
 
