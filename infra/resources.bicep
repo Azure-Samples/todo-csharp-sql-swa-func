@@ -9,7 +9,7 @@ param sqlAdminPassword string
 param appUserPassword string
 
 // The application frontend
-module web './app/web.bicep' = {
+module web './app/web-staticwebapp.bicep' = {
   name: 'web'
   params: {
     environmentName: environmentName
@@ -18,14 +18,14 @@ module web './app/web.bicep' = {
 }
 
 // The application backend
-module api './app/api.bicep' = {
+module api './app/api-functions-dotnet-isolated.bicep' = {
   name: 'api'
   params: {
     environmentName: environmentName
     location: location
     applicationInsightsName: monitoring.outputs.applicationInsightsName
     appServicePlanId: appServicePlan.outputs.appServicePlanId
-    keyVaultName: keyVault.outputs.keyVaultName
+    keyVaultName: keyVault.outputs.name
     storageAccountName: storage.outputs.name
     allowedOrigins: [ web.outputs.WEB_URI ]
     appSettings: {
@@ -40,20 +40,20 @@ module apiKeyVaultAccess './core/security/keyvault-access.bicep' = {
   params: {
     environmentName: environmentName
     location: location
-    keyVaultName: keyVault.outputs.keyVaultName
+    keyVaultName: keyVault.outputs.name
     principalId: api.outputs.API_IDENTITY_PRINCIPAL_ID
   }
 }
 
 // The application database
-module sqlServer './app/db.bicep' = {
+module sqlServer './app/sqlserver.bicep' = {
   name: 'sql'
   params: {
     environmentName: environmentName
     location: location
     sqlAdminPassword: sqlAdminPassword
     appUserPassword: appUserPassword
-    keyVaultName: keyVault.outputs.keyVaultName
+    keyVaultName: keyVault.outputs.name
   }
 }
 
@@ -100,7 +100,7 @@ module monitoring './core/monitor/monitoring.bicep' = {
 
 output API_URI string = api.outputs.API_URI
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = monitoring.outputs.applicationInsightsConnectionString
-output AZURE_KEY_VAULT_ENDPOINT string = keyVault.outputs.keyVaultEndpoint
+output AZURE_KEY_VAULT_ENDPOINT string = keyVault.outputs.endpoint
 output AZURE_KEY_VAULT_NAME string = keyVault.name
 output AZURE_SQL_CONNECTION_STRING_KEY string = sqlServer.outputs.sqlConnectionStringKey
 output WEB_URI string = web.outputs.WEB_URI
