@@ -78,7 +78,7 @@ module api './app/api.bicep' = {
 }
 
 // Give the API access to KeyVault
-module apiKeyVaultAccess './core/security/keyvault-access.bicep' = {
+module apiKeyVaultAccess 'br:publicazdbicepmodules.azurecr.io/bicep/staging/core/security/keyvault-access:v1.0' = {
   name: 'api-keyvault-access'
   scope: rg
   params: {
@@ -103,7 +103,7 @@ module sqlServer './app/db.bicep' = {
 }
 
 // Create an App Service Plan to group applications under the same payment plan and SKU
-module appServicePlan './core/host/appserviceplan.bicep' = {
+module appServicePlan 'br:publicazdbicepmodules.azurecr.io/bicep/staging/core/host/appserviceplan:v1.0' = {
   name: 'appserviceplan'
   scope: rg
   params: {
@@ -118,7 +118,7 @@ module appServicePlan './core/host/appserviceplan.bicep' = {
 }
 
 // Backing storage for Azure functions backend API
-module storage './core/storage/storage-account.bicep' = {
+module storage 'br:publicazdbicepmodules.azurecr.io/bicep/staging/core/storage/storage-account:v1.0' = {
   name: 'storage'
   scope: rg
   params: {
@@ -129,7 +129,7 @@ module storage './core/storage/storage-account.bicep' = {
 }
 
 // Store secrets in a keyvault
-module keyVault './core/security/keyvault.bicep' = {
+module keyVault 'br:publicazdbicepmodules.azurecr.io/bicep/staging/core/security/keyvault:v1.0' = {
   name: 'keyvault'
   scope: rg
   params: {
@@ -141,7 +141,7 @@ module keyVault './core/security/keyvault.bicep' = {
 }
 
 // Monitor application with Azure Monitor
-module monitoring './core/monitor/monitoring.bicep' = {
+module monitoring 'br:publicazdbicepmodules.azurecr.io/bicep/staging/core/monitor/monitoring:v1.0' = {
   name: 'monitoring'
   scope: rg
   params: {
