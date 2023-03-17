@@ -59,6 +59,9 @@ module web './app/web.bicep' = {
     name: !empty(webServiceName) ? webServiceName : '${abbrs.webStaticSites}web-${resourceToken}'
     location: location
     tags: tags
+    appSettings: {
+      REACT_APP_APPLICATIONINSIGHTS_CONNECTION_STRING: monitoring.outputs.applicationInsightsConnectionString
+    }
   }
 }
 
@@ -77,6 +80,18 @@ module api './app/api.bicep' = {
     allowedOrigins: [ web.outputs.SERVICE_WEB_URI ]
     appSettings: {
       AZURE_SQL_CONNECTION_STRING_KEY: sqlServer.outputs.connectionStringKey
+    }
+  }
+}
+
+// Set web to reference API after API is deployed
+module webSettings './core/host/staticweb-appsettings-merge.bicep' =  {
+  name: 'web-appsettings-append'
+  scope: rg
+  params: {
+    name: webServiceName
+    appSettings: {
+      REACT_APP_API_BASE_URL: api.outputs.SERVICE_API_URI
     }
   }
 }
