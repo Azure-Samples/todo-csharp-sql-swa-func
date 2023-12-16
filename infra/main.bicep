@@ -40,6 +40,10 @@ param sqlAdminPassword string
 @description('Application user password')
 param appUserPassword string
 
+param databaseSkuName string = ''
+param databaseSkuTier string = ''
+param databaseSkuCapacity int = -1
+
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
@@ -103,7 +107,10 @@ module sqlServer './app/db.bicep' = {
     sqlAdminPassword: sqlAdminPassword
     appUserPassword: appUserPassword
     keyVaultName: keyVault.outputs.name
-  }
+    databaseSkuName: databaseSkuName
+    databaseSkuTier: databaseSkuTier
+    databaseSkuCapacity: databaseSkuCapacity
+  }  
 }
 
 // Create an App Service Plan to group applications under the same payment plan and SKU

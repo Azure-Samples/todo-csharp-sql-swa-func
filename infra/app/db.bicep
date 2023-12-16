@@ -10,9 +10,23 @@ param sqlAdminPassword string
 @secure()
 param appUserPassword string
 
+param databaseSkuName string
+param databaseSkuTier string
+param databaseSkuCapacity int
+
 // Because databaseName is optional in main.bicep, we make sure the database name is set here.
 var defaultDatabaseName = 'Todo'
 var actualDatabaseName = !empty(databaseName) ? databaseName : defaultDatabaseName
+
+// Default SKU Settings
+var defaultDatabaseSkuName = 'Basic'
+var actualDatabaseSkuName = !empty(databaseSkuName) ? databaseSkuName : defaultDatabaseSkuName
+
+var defaultDatabaseSkuTier = 'Basic'
+var actualDatabaseSkuTier = !empty(databaseSkuTier) ? databaseSkuTier : defaultDatabaseSkuTier
+
+var defaultDatabaseSkuCapacity = 5
+var actualDatabaseSkuCapacity = databaseSkuCapacity > 0 ? databaseSkuCapacity : defaultDatabaseSkuCapacity
 
 module sqlServer '../core/database/sqlserver/sqlserver.bicep' = {
   name: 'sqlserver'
@@ -24,6 +38,9 @@ module sqlServer '../core/database/sqlserver/sqlserver.bicep' = {
     keyVaultName: keyVaultName
     sqlAdminPassword: sqlAdminPassword
     appUserPassword: appUserPassword
+    databaseSkuName: actualDatabaseSkuName
+    databaseSkuTier: actualDatabaseSkuTier
+    databaseSkuCapacity: actualDatabaseSkuCapacity
   }
 }
 
