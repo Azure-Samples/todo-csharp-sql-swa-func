@@ -14,6 +14,10 @@ param sqlAdminPassword string
 @secure()
 param appUserPassword string
 
+param databaseSkuName string
+param databaseSkuTier string
+param databaseSkuCapacity int
+
 resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = {
   name: name
   location: location
@@ -29,6 +33,11 @@ resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = {
   resource database 'databases' = {
     name: databaseName
     location: location
+    sku: {
+      name: databaseSkuName
+      tier: databaseSkuTier
+      capacity: databaseSkuCapacity
+    }
   }
 
   resource firewall 'firewallRules' = {

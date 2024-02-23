@@ -19,6 +19,15 @@
     },
     "useAPIM": {
       "value": "${USE_APIM=false}"
+    },
+    "databaseSkuName": {
+      "value": "${DATABASE_SKU_NAME}"
+    },
+    "databaseSkuTier": {
+      "value": "${DATABASE_SKU_TIER}"
+    },
+    "databaseSkuCapacity": {
+      "value": "${DATABASE_SKU_CAPACITY}"
     }
   }
 }
