@@ -92,6 +92,7 @@ module api './app/api-avm.bicep' = {
       API_ALLOW_ORIGINS: webUri
       FUNCTIONS_EXTENSION_VERSION: '~4'
       FUNCTIONS_WORKER_RUNTIME: 'dotnet-isolated'
+      SCM_DO_BUILD_DURING_DEPLOYMENT: false
     }
     appInsightResourceId: applicationInsights.outputs.resourceId
     linuxFxVersion: 'dotnet-isolated|8.0'
