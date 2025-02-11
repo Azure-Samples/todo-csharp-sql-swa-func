@@ -29,6 +29,11 @@ resource sqlServer 'Microsoft.Sql/servers@2022-05-01-preview' = {
   resource database 'databases' = {
     name: databaseName
     location: location
+    sku: {
+      name: 'Basic'
+      tier: 'Basic'
+      capacity: 5
+    }
   }
 
   resource firewall 'firewallRules' = {
