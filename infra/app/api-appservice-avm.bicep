@@ -20,7 +20,7 @@ param clientAffinityEnabled bool = true
 @description('Optional. Required if app of kind functionapp. Resource ID of the storage account to manage triggers and logging function executions.')
 param storageAccountResourceId string?
 
-module api 'br/public:avm/res/web/site:0.6.0' = {
+module api 'br/public:avm/res/web/site:0.15.1' = {
   name: '${name}-app-module'
   params: {
     kind: kind

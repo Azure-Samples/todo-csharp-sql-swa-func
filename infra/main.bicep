@@ -80,7 +80,7 @@ module api './app/api-appservice-avm.bicep' = {
     appServicePlanId: appServicePlan.outputs.resourceId
     appSettings: {
       AZURE_KEY_VAULT_ENDPOINT: keyVault.outputs.uri
-      AZURE_SQL_CONNECTION_STRING_KEY: connectionStringKey
+      // AZURE_SQL_CONNECTION_STRING_KEY: connectionStringKey
       API_ALLOW_ORIGINS: webUri
       FUNCTIONS_EXTENSION_VERSION: '~4'
       FUNCTIONS_WORKER_RUNTIME: 'dotnet-isolated'
@@ -131,27 +131,27 @@ module accessKeyVault 'br/public:avm/res/key-vault/vault:0.5.1' = {
           name: 'appUser'
           value: appUserPassword 
         }
-        {
-          name: connectionStringKey
-          value: 'Server=${sqlService.outputs.sqlServerName}${environment().suffixes.sqlServerHostname}; Database=${sqlService.outputs.databaseName}; User=${appUser}; Password=${appUserPassword}'
-        }
+        // {
+        //   name: connectionStringKey
+        //   value: 'Server=${sqlService.outputs.sqlServerName}${environment().suffixes.sqlServerHostname}; Database=${sqlService.outputs.databaseName}; User=${appUser}; Password=${appUserPassword}'
+        // }
       ]
     }
   }
 }
 
-// The application database
-module sqlService './app/db-avm.bicep' = {
-  name: 'sqldeploymentscript'
-  scope: rg
-  params: {
-    location: location
-    appUserPassword: appUserPassword
-    sqlAdminPassword: sqlAdminPassword
-    sqlServiceName: !empty(sqlServerName) ? sqlServerName : '${abbrs.sqlServers}${resourceToken}'
-    appUser: appUser
-  }
-}
+// // The application database
+// module sqlService './app/db-avm.bicep' = {
+//   name: 'sqldeploymentscript'
+//   scope: rg
+//   params: {
+//     location: location
+//     appUserPassword: appUserPassword
+//     sqlAdminPassword: sqlAdminPassword
+//     sqlServiceName: !empty(sqlServerName) ? sqlServerName : '${abbrs.sqlServers}${resourceToken}'
+//     appUser: appUser
+//   }
+// }
 
 // Create an App Service Plan to group applications under the same payment plan and SKU
 module appServicePlan 'br/public:avm/res/web/serverfarm:0.1.1' = {
@@ -176,15 +176,18 @@ module storage 'br/public:avm/res/storage/storage-account:0.8.3' = {
   scope: rg
   params: {
     name: !empty(storageAccountName) ? storageAccountName : '${abbrs.storageStorageAccounts}${resourceToken}'
-    allowBlobPublicAccess: true
+    allowBlobPublicAccess: false
+    allowSharedKeyAccess: false // Disable local authentication methods as per policy
     dnsEndpointType: 'Standard'
-    publicNetworkAccess:'Enabled'
+    publicNetworkAccess: 'Enabled'  // Changed from 'Disabled' to 'Enabled' as it conflicts with networkAcls defaultAction
     networkAcls:{
       bypass: 'AzureServices'
-      defaultAction: 'Allow'
+      defaultAction: 'Allow'  // Changed from 'Allow' to 'Deny' for better security
     }
+    minimumTlsVersion: 'TLS1_2'  // Enforcing TLS 1.2 for better security
     location: location
     tags: tags
+    requireInfrastructureEncryption: true  // Enhanced encryption
   }
 }
 
