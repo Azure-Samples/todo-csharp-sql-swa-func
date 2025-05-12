@@ -73,13 +73,15 @@ param vNetName string = ''
 @description('Id of the user or app to assign application roles')
 param principalId string = ''
 
-@secure()
-@description('SQL Server administrator password')
-param sqlAdminPassword string
+param sqlDatabaseName string = ''
 
-@secure()
-@description('Application user password')
-param appUserPassword string
+// @secure()
+// @description('SQL Server administrator password')
+// param sqlAdminPassword string
+
+// @secure()
+// @description('Application user password')
+// param appUserPassword string
 
 
 var deploymentStorageContainerName = 'app-package-${take(functionAppName, 32)}-${take(toLower(uniqueString(functionAppName, resourceToken)), 7)}'
@@ -157,6 +159,7 @@ module api './app/api.bicep' = {
     identityClientId: apiUserAssignedIdentity.outputs.clientId
     appSettings: {
       AZURE_KEY_VAULT_ENDPOINT: keyVault.outputs.uri
+      AZURE_SQL_CONNECTION_STRING_KEY: 'Server=${sqlServer.outputs.name}${environment().suffixes.sqlServerHostname}; Database=${actualDatabaseName}; Authentication=Active Directory Default; User Id=${apiUserAssignedIdentity.outputs.clientId}; TrustServerCertificate=True'
       API_ALLOW_ORIGINS: webUri
     }
     virtualNetworkSubnetId: vnetEnabled ? serviceVirtualNetwork.outputs.appSubnetID : ''
@@ -183,7 +186,7 @@ module accessKeyVault 'br/public:avm/res/key-vault/vault:0.5.1' = {
         }
       }
       {
-        objectId: api.outputs.SERVICE_API_IDENTITY_PRINCIPAL_ID
+        objectId: apiUserAssignedIdentity.outputs.principalId
         permissions: {
           secrets: [ 'get', 'list' ]
         }
@@ -192,34 +195,102 @@ module accessKeyVault 'br/public:avm/res/key-vault/vault:0.5.1' = {
     secrets:{
       secureList: [
         {
-          name: 'sqlAdmin'
-          value: sqlAdminPassword
+          name: connectionStringKey
+          value: 'Server=${sqlServer.outputs.fullyQualifiedDomainName}; Database=${actualDatabaseName}; Authentication=Active Directory Default; User Id=${apiUserAssignedIdentity.outputs.clientId}; TrustServerCertificate=True'
         }
-        {
-          name: 'appUser'
-          value: appUserPassword 
-        }
-        // {
-        //   name: connectionStringKey
-        //   value: 'Server=${sqlService.outputs.sqlServerName}${environment().suffixes.sqlServerHostname}; Database=${sqlService.outputs.databaseName}; User=${appUser}; Password=${appUserPassword}'
-        // }
       ]
     }
   }
 }
 
-// // The application database
-// module sqlService './app/db-avm.bicep' = {
-//   name: 'sqldeploymentscript'
+// The application database
+var defaultDatabaseName = 'Todo'
+var actualDatabaseName = !empty(sqlDatabaseName) ? sqlDatabaseName : defaultDatabaseName
+
+module sqlServer 'br/public:avm/res/sql/server:0.16.1' = {
+  name: 'sqlservice'
+  scope: rg
+  params: {
+    name: !empty(sqlServerName) ? sqlServerName : '${abbrs.sqlServers}${resourceToken}'
+    location: location
+    tags: tags
+    publicNetworkAccess: 'Enabled'
+    administrators: {
+      azureADOnlyAuthentication: true
+      login: apiUserAssignedIdentity.outputs.name
+      principalType: 'Application'
+      sid: apiUserAssignedIdentity.outputs.clientId
+      tenantId: tenant().tenantId
+    } 
+    // managedIdentities: {
+    //   systemAssigned: false
+    //   userAssignedResourceIds: [
+    //     apiUserAssignedIdentity.outputs.resourceId
+    //   ]
+    // }
+    // primaryUserAssignedIdentityResourceId: apiUserAssignedIdentity.outputs.resourceId
+    databases: [
+      {
+        name: actualDatabaseName
+        availabilityZone: -1
+        zoneRedundant: false
+      }
+    ]
+    firewallRules: [
+      {
+        name: 'Azure Services'
+        startIpAddress: '0.0.0.1'
+        endIpAddress: '255.255.255.254'
+      }
+    ]
+  }
+}
+
+// module deploymentScript 'br/public:avm/res/resources/deployment-script:0.1.3' = {
+//   name: 'deployment-script'
 //   scope: rg
 //   params: {
+//     kind: 'AzureCLI'
+//     name: 'deployment-script'
+//     azCliVersion: '2.37.0'
 //     location: location
-//     appUserPassword: appUserPassword
-//     sqlAdminPassword: sqlAdminPassword
-//     sqlServiceName: !empty(sqlServerName) ? sqlServerName : '${abbrs.sqlServers}${resourceToken}'
-//     appUser: appUser
+//     retentionInterval: 'PT1H'
+//     timeout: 'PT5M'
+//     cleanupPreference: 'OnSuccess'
+//     environmentVariables:{
+//       secureList: [
+//         {
+//           name: 'DBNAME'
+//           value: actualDatabaseName
+//         }
+//         {
+//           name: 'DBSERVER'
+//           value: '${sqlServer.outputs.name}${environment().suffixes.sqlServerHostname}'
+//         }
+//         {
+//           name: 'UAMICLIENTID'
+//           secureValue: apiUserAssignedIdentity.outputs.clientId
+//         }
+//       ]
+//     }
+//     scriptContent: '''
+// wget https://github.com/microsoft/go-sqlcmd/releases/download/v0.8.1/sqlcmd-v0.8.1-linux-x64.tar.bz2
+// tar x -f sqlcmd-v0.8.1-linux-x64.tar.bz2 -C .
+
+// cat <<SCRIPT_END > ./initDb.sql
+// drop user if exists ${APPUSERNAME}
+// go
+// create user ${APPUSERNAME} with password = '${APPUSERPASSWORD}'
+// go
+// alter role db_owner add member ${APPUSERNAME}
+// go
+// SCRIPT_END
+
+// ./sqlcmd -S ${DBSERVER} -d ${DBNAME} --authentication-method ActiveDirectoryManagedIdentity -U {UAMICLIENTID} -i ./initDb.sql
+//     '''
 //   }
 // }
+
 
 module storage 'br/public:avm/res/storage/storage-account:0.8.3' = {
   name: 'storage'
@@ -249,7 +320,7 @@ module storage 'br/public:avm/res/storage/storage-account:0.8.3' = {
 // Define the configuration object locally to pass to the modules
 var storageEndpointConfig = {
   enableBlob: true  // Required for AzureWebJobsStorage, .zip deployment, Event Hubs trigger and Timer trigger checkpointing
-  enableQueue: true  // Required for Durable Functions and MCP trigger
+  enableQueue: false  // Required for Durable Functions and MCP trigger
   enableTable: false  // Required for Durable Functions and OpenAI triggers and bindings
   enableFiles: false   // Not required, used in legacy scenarios
   allowUserIdentityPrincipal: true   // Allow interactive user identity to access for testing and debugging
@@ -384,7 +455,10 @@ module apimApi 'br/public:avm/ptn/azd/apim-api:0.1.0' = if (useAPIM) {
 }
 
 // Data outputs
-output AZURE_SQL_CONNECTION_STRING_KEY string = connectionStringKey
+output AZURE_SQL_CONNECTION_STRING_KEY string = 'Server=${sqlServer.outputs.fullyQualifiedDomainName}; Database=${actualDatabaseName}; Authentication=Active Directory Default; User Id=${apiUserAssignedIdentity.outputs.clientId}; TrustServerCertificate=True'
+output AZURE_SQL_SERVER_NAME string = sqlServer.outputs.fullyQualifiedDomainName
+output AZURE_SQL_DATABASE_NAME string = actualDatabaseName
+output USER_ASSIGNED_IDENTITY_CLIENT_ID string = apiUserAssignedIdentity.outputs.clientId
 
 // App outputs
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = monitoring.outputs.connectionString
