@@ -6,6 +6,9 @@ param allowUserIdentityPrincipal bool = false // Flag to enable user identity ro
 param enableBlob bool = true
 param enableQueue bool = false
 param enableTable bool = false
+param enableSQL bool = false
+param keyVaultName string = ''
+param sqlAdminPrincipalId string = ''
 
 // Define Role Definition IDs internally
 var storageRoleDefinitionId  = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b' //Storage Blob Data Owner role
@@ -108,3 +111,34 @@ resource appInsightsRoleAssignment_User 'Microsoft.Authorization/roleAssignments
     principalType: 'User' // User Identity is a User Principal
   }
 }
+
+// KeyVault Access Policies for Azure SQL Server
+module accessKeyVault 'br/public:avm/res/key-vault/vault:0.5.1' = if (!empty(keyVaultName) && enableSQL) {
+  name: 'accesskeyvault'
+  scope: resourceGroup()
+  params: {
+    name: keyVaultName
+    enableRbacAuthorization: false
+    enableVaultForDeployment: false
+    enableVaultForTemplateDeployment: false
+    enablePurgeProtection: false
+    sku: 'standard'
+    accessPolicies: [
+      {
+        objectId: userIdentityPrincipalId
+        permissions: {
+          secrets: [ 'get', 'list' ]
+        }
+      }
+      {
+        objectId: sqlAdminPrincipalId
+        permissions: {
+          secrets: [ 'get', 'list' ]
+        }
+      }
+    ]
+  }
+}
+
+// Outputs
+output keyVaultAccessConfigured bool = !empty(keyVaultName) && enableSQL

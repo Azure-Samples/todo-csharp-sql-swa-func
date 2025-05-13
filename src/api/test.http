@@ -1,0 +1,56 @@
+@localBaseUrl = http://localhost:7071/api
+@azureBaseUrl = https://<<your-app>.azurewebsites.net
+
+@listId = <your-list-id-guid>
+
+### Test the GetLists Function API
+GET {{localBaseUrl}}/lists
+Accept: application/json
+
+### Test the GetLists Function API with pagination
+GET {{localBaseUrl}}/lists?skip=0&batchSize=10
+Accept: application/json
+
+### Get a specific list by ID (replace with an actual GUID from your database)
+GET {{localBaseUrl}}/lists/{{listId}}
+Accept: application/json
+
+### Create a new list
+POST {{localBaseUrl}}/lists?name=New Test List&description=Created from HTTP test
+Content-Type: application/json
+
+### Get items from a specific list
+GET {{localBaseUrl}}/lists/{{listId}}/items
+Accept: application/json
+
+### Get completed items from a specific list
+GET {{localBaseUrl}}/lists/{{listId}}/state/1
+Accept: application/json
+
+### Create a new item in a list
+POST {{localBaseUrl}}/lists/{{listId}}/items?name=Test Item&description=Created via HTTP test&state=todo
+Content-Type: application/json
+
+### Test against the deployed Azure Function with function key
+GET {{azureBaseUrl}}/lists
+Accept: application/json
+
+### Test the paginated lists from the deployed function
+GET {{azureBaseUrl}}/lists
+Accept: application/json
+
+### Test specific list by ID against the deployed function
+GET {{azureBaseUrl}}/lists/{{listId}}
+Accept: application/json
+
+### Test get items from a specific list on the deployed function
+GET {{azureBaseUrl}}/lists/{{listId}}/items
+Accept: application/json
+
+### Test create a new list on the deployed function
+POST {{azureBaseUrl}}/lists?&name=Azure List&description=Created from Azure test
+Content-Type: application/json
+
+### Test completed items from a specific list on the deployed function
+GET {{azureBaseUrl}}/lists/{{listId}}/state/1
+Accept: application/json

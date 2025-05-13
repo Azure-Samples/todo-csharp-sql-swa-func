@@ -98,11 +98,13 @@ module api 'br/public:avm/res/web/site:0.15.1' = {
       }
     }
     siteConfig: {
-      allowedOrigins: union(['https://portal.azure.com', 'https://ms.portal.azure.com'], allowedOrigins)
       alwaysOn: false
-    }
+      cors: {
+        allowedOrigins: union(['https://portal.azure.com', 'https://ms.portal.azure.com', 'http://0.0.0.0:8000', 'http://localhost:8000'], allowedOrigins)
+      }
     virtualNetworkSubnetId: !empty(virtualNetworkSubnetId) ? virtualNetworkSubnetId : null
     appSettingsKeyValuePairs: allAppSettings
+    }
   }
 }
 

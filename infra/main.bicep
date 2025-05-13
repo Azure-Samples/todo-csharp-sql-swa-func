@@ -49,6 +49,7 @@ param environmentName string
 param location string
 param apiServiceName string = ''
 param apiUserAssignedIdentityName string = ''
+param sqlAdminUserAssignedIdentityName string = ''
 param applicationInsightsName string = ''
 param appServicePlanName string = ''
 param keyVaultName string = ''
@@ -75,14 +76,6 @@ param principalId string = ''
 
 param sqlDatabaseName string = ''
 
-// @secure()
-// @description('SQL Server administrator password')
-// param sqlAdminPassword string
-
-// @secure()
-// @description('Application user password')
-// param appUserPassword string
-
 
 var deploymentStorageContainerName = 'app-package-${take(functionAppName, 32)}-${take(toLower(uniqueString(functionAppName, resourceToken)), 7)}'
 var abbrs = loadJsonContent('./abbreviations.json')
@@ -108,6 +101,18 @@ module apiUserAssignedIdentity 'br/public:avm/res/managed-identity/user-assigned
     location: location
     tags: tags
     name: !empty(apiUserAssignedIdentityName) ? apiUserAssignedIdentityName : '${abbrs.managedIdentityUserAssignedIdentities}api-${resourceToken}'
+  }
+}
+
+// User assigned managed identity to be used by the function app to MANAGE/ADMINISTER the SQL server
+// Assign specific roles to this identity in the RBAC module
+module sqlAdminUserAssignedIdentity 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.1' = {
+  name: 'sqlAdminAssignedIdentity'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    name: !empty(sqlAdminUserAssignedIdentityName) ? sqlAdminUserAssignedIdentityName : '${abbrs.managedIdentityUserAssignedIdentities}sqlAdmin-${resourceToken}'
   }
 }
 
@@ -159,47 +164,10 @@ module api './app/api.bicep' = {
     identityClientId: apiUserAssignedIdentity.outputs.clientId
     appSettings: {
       AZURE_KEY_VAULT_ENDPOINT: keyVault.outputs.uri
-      AZURE_SQL_CONNECTION_STRING_KEY: 'Server=${sqlServer.outputs.name}${environment().suffixes.sqlServerHostname}; Database=${actualDatabaseName}; Authentication=Active Directory Default; User Id=${apiUserAssignedIdentity.outputs.clientId}; TrustServerCertificate=True'
-      API_ALLOW_ORIGINS: webUri
+      AZURE_SQL_CONNECTION_STRING_KEY: 'Server=${sqlServer.outputs.name}${environment().suffixes.sqlServerHostname}; Database=${actualDatabaseName}; Authentication=Active Directory Default; User Id=${sqlAdminUserAssignedIdentity.outputs.clientId}; TrustServerCertificate=True'
     }
     virtualNetworkSubnetId: vnetEnabled ? serviceVirtualNetwork.outputs.appSubnetID : ''
     allowedOrigins: [ webUri ]
-  }
-}
-
-// Give the API access to KeyVault
-module accessKeyVault 'br/public:avm/res/key-vault/vault:0.5.1' = {
-  name: 'accesskeyvault'
-  scope: rg
-  params: {
-    name: keyVault.outputs.name
-    enableRbacAuthorization: false
-    enableVaultForDeployment: false
-    enableVaultForTemplateDeployment: false
-    enablePurgeProtection: false
-    sku: 'standard'
-    accessPolicies: [
-      {
-        objectId: principalId
-        permissions: {
-          secrets: [ 'get', 'list' ]
-        }
-      }
-      {
-        objectId: apiUserAssignedIdentity.outputs.principalId
-        permissions: {
-          secrets: [ 'get', 'list' ]
-        }
-      }
-    ]
-    secrets:{
-      secureList: [
-        {
-          name: connectionStringKey
-          value: 'Server=${sqlServer.outputs.fullyQualifiedDomainName}; Database=${actualDatabaseName}; Authentication=Active Directory Default; User Id=${apiUserAssignedIdentity.outputs.clientId}; TrustServerCertificate=True'
-        }
-      ]
-    }
   }
 }
 
@@ -217,18 +185,11 @@ module sqlServer 'br/public:avm/res/sql/server:0.16.1' = {
     publicNetworkAccess: 'Enabled'
     administrators: {
       azureADOnlyAuthentication: true
-      login: apiUserAssignedIdentity.outputs.name
+      login: sqlAdminUserAssignedIdentity.outputs.name
       principalType: 'Application'
-      sid: apiUserAssignedIdentity.outputs.clientId
+      sid: sqlAdminUserAssignedIdentity.outputs.clientId
       tenantId: tenant().tenantId
     } 
-    // managedIdentities: {
-    //   systemAssigned: false
-    //   userAssignedResourceIds: [
-    //     apiUserAssignedIdentity.outputs.resourceId
-    //   ]
-    // }
-    // primaryUserAssignedIdentityResourceId: apiUserAssignedIdentity.outputs.resourceId
     databases: [
       {
         name: actualDatabaseName
@@ -246,6 +207,7 @@ module sqlServer 'br/public:avm/res/sql/server:0.16.1' = {
   }
 }
 
+// // Optional deployment script to add the API user to the database
 // module deploymentScript 'br/public:avm/res/resources/deployment-script:0.1.3' = {
 //   name: 'deployment-script'
 //   scope: rg
@@ -268,25 +230,37 @@ module sqlServer 'br/public:avm/res/sql/server:0.16.1' = {
 //           value: '${sqlServer.outputs.name}${environment().suffixes.sqlServerHostname}'
 //         }
 //         {
-//           name: 'UAMICLIENTID'
-//           secureValue: apiUserAssignedIdentity.outputs.clientId
+//           name: 'UAMIOBJECTID-API'
+//           secureValue: apiUserAssignedIdentity.outputs.principalId
+//         }
+//         {
+//           name: 'UAMINAME-API'
+//           secureValue: apiUserAssignedIdentity.outputs.name
+//         }
+//         {
+//           name: 'UAMICLIENTID-SQLADMIN'
+//           secureValue: sqlAdminUserAssignedIdentity.outputs.clientId
 //         }
 //       ]
 //     }
+//     // Uses sqlAdminUserAssignedIdentity to run the script as elevated SQL admin
+//     // Adds the apiUserAssignedIdentity (normal app/api user) to the database and assigns it the db_datareader, db_datawriter, and db_ddladmin roles
+//     // More info: https://learn.microsoft.com/en-us/azure/app-service/tutorial-connect-msi-sql-database?tabs=windowsclient%2Cefcore%2Cdotnet#grant-permissions-to-managed-identity
 //     scriptContent: '''
 // wget https://github.com/microsoft/go-sqlcmd/releases/download/v0.8.1/sqlcmd-v0.8.1-linux-x64.tar.bz2
 // tar x -f sqlcmd-v0.8.1-linux-x64.tar.bz2 -C .
 
 // cat <<SCRIPT_END > ./initDb.sql
-// drop user if exists ${APPUSERNAME}
+// drop user if exists ${UAMINAME-API}
 // go
-// create user ${APPUSERNAME} with password = '${APPUSERPASSWORD}'
-// go
-// alter role db_owner add member ${APPUSERNAME}
-// go
+// CREATE USER [${UAMINAME-API}] FROM EXTERNAL PROVIDER With OBJECT_ID='${UAMIOBJECTID-API}';
+// ALTER ROLE db_datareader ADD MEMBER [${UAMINAME-API}];
+// ALTER ROLE db_datawriter ADD MEMBER [${UAMINAME-API}];
+// ALTER ROLE db_ddladmin ADD MEMBER [${UAMINAME-API}];
+// GO
 // SCRIPT_END
 
-// ./sqlcmd -S ${DBSERVER} -d ${DBNAME} --authentication-method ActiveDirectoryManagedIdentity -U {UAMICLIENTID} -i ./initDb.sql
+// ./sqlcmd -S ${DBSERVER} -d ${DBNAME} --authentication-method ActiveDirectoryManagedIdentity -U {UAMICLIENTID-SQLADMIN} -i ./initDb.sql
 //     '''
 //   }
 // }
@@ -354,7 +328,10 @@ module rbac 'app/rbac.bicep' = {
     enableBlob: storageEndpointConfig.enableBlob
     enableQueue: storageEndpointConfig.enableQueue
     enableTable: storageEndpointConfig.enableTable
+    enableSQL: true
     allowUserIdentityPrincipal: storageEndpointConfig.allowUserIdentityPrincipal
+    keyVaultName: keyVault.outputs.name
+    sqlAdminPrincipalId: sqlAdminUserAssignedIdentity.outputs.principalId
   }
 }
 
