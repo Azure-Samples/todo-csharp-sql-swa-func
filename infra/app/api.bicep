@@ -15,6 +15,7 @@ param instanceMemoryMB int = 512
 param maximumInstanceCount int = 100
 param identityId string = ''
 param identityClientId string = ''
+param sqlAdminIdentityId string = ''
 param enableBlob bool = true
 param enableQueue bool = false
 param enableTable bool = false
@@ -73,9 +74,9 @@ module api 'br/public:avm/res/web/site:0.15.1' = {
     serverFarmResourceId: appServicePlanId
     managedIdentities: {
       systemAssigned: identityType == 'SystemAssigned'
-      userAssignedResourceIds: [
-        '${identityId}'
-      ]
+      userAssignedResourceIds: !empty(sqlAdminIdentityId) 
+        ? [identityId, sqlAdminIdentityId] 
+        : [identityId]
     }
     functionAppConfig: {
       deployment: {
@@ -102,9 +103,9 @@ module api 'br/public:avm/res/web/site:0.15.1' = {
       cors: {
         allowedOrigins: union(['https://portal.azure.com', 'https://ms.portal.azure.com', 'http://0.0.0.0:8000', 'http://localhost:8000'], allowedOrigins)
       }
+    }
     virtualNetworkSubnetId: !empty(virtualNetworkSubnetId) ? virtualNetworkSubnetId : null
     appSettingsKeyValuePairs: allAppSettings
-    }
   }
 }
 
