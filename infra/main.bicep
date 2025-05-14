@@ -60,6 +60,9 @@ param webServiceName string = ''
 param apimServiceName string = ''
 param connectionStringKey string = 'AZURE-SQL-CONNECTION-STRING'
 
+@description('Flag to enable SQL scripts for database user and role setup')
+param enableSQLScripts bool = false
+
 @description('Flag to use Azure API Management to mediate the calls between the Web frontend and the backend API')
 param useAPIM bool = false
 
@@ -102,7 +105,7 @@ module apiUserAssignedIdentity 'br/public:avm/res/managed-identity/user-assigned
 }
 
 // The application frontend
-module web 'br/public:avm/res/web/static-site:0.3.0' = {
+module web 'br/public:avm/res/web/static-site:0.9.0' = {
   name: 'staticweb'
   scope: rg
   params: {
@@ -147,146 +150,37 @@ module api './app/api.bicep' = {
     deploymentStorageContainerName: deploymentStorageContainerName
     identityId: apiUserAssignedIdentity.outputs.resourceId
     identityClientId: apiUserAssignedIdentity.outputs.clientId
+    sqlAdminIdentityId: enableSQLScripts ? db.outputs.sqlAdminIdentityId : ''
     appSettings: {
-      AZURE_KEY_VAULT_ENDPOINT: keyVault.outputs.uri
-      AZURE_SQL_CONNECTION_STRING_KEY: 'Server=${sqlServer.outputs.name}${environment().suffixes.sqlServerHostname}; Database=${actualDatabaseName}; Authentication=Active Directory Default; User Id=${apiUserAssignedIdentity.outputs.clientId}; TrustServerCertificate=True'
+      AZURE_KEY_VAULT_ENDPOINT: enableSQLScripts ? db.outputs.keyVaultUri : ''
+      AZURE_SQL_CONNECTION_STRING_KEY: 'Server=${db.outputs.name}${environment().suffixes.sqlServerHostname}; Database=${db.outputs.databaseName}; Authentication=Active Directory Default; User Id=${apiUserAssignedIdentity.outputs.clientId}; TrustServerCertificate=True'
     }
     virtualNetworkSubnetId: vnetEnabled ? serviceVirtualNetwork.outputs.appSubnetID : ''
     allowedOrigins: [ webUri ]
   }
 }
 
-// Give the API access to KeyVault
-module accessKeyVault 'br/public:avm/res/key-vault/vault:0.5.1' = {
-  name: 'accesskeyvault'
-  scope: rg
-  params: {
-    name: keyVault.outputs.name
-    enableRbacAuthorization: false
-    enableVaultForDeployment: false
-    enableVaultForTemplateDeployment: false
-    enablePurgeProtection: false
-    sku: 'standard'
-    accessPolicies: [
-      {
-        objectId: principalId
-        permissions: {
-          secrets: [ 'get', 'list' ]
-        }
-      }
-      {
-        objectId: apiUserAssignedIdentity.outputs.principalId
-        permissions: {
-          secrets: [ 'get', 'list' ]
-        }
-      }
-    ]
-    secrets:{
-      secureList: [
-        {
-          name: connectionStringKey
-          value: 'Server=${sqlServer.outputs.fullyQualifiedDomainName}; Database=${actualDatabaseName}; Authentication=Active Directory Default; User Id=${apiUserAssignedIdentity.outputs.clientId}; TrustServerCertificate=True'
-        }
-      ]
-    }
-  }
-}
-
 // The application database
-var defaultDatabaseName = 'Todo'
-var actualDatabaseName = !empty(sqlDatabaseName) ? sqlDatabaseName : defaultDatabaseName
-
-module sqlServer 'br/public:avm/res/sql/server:0.16.1' = {
-  name: 'sqlservice'
+// Import the database resources from db.bicep
+module db './app/db.bicep' = {
+  name: 'database'
   scope: rg
   params: {
-    name: !empty(sqlServerName) ? sqlServerName : '${abbrs.sqlServers}${resourceToken}'
     location: location
     tags: tags
-    publicNetworkAccess: 'Enabled'
-    administrators: {
-      azureADOnlyAuthentication: true
-      login: apiUserAssignedIdentity.outputs.name
-      principalType: 'Application'
-      sid: apiUserAssignedIdentity.outputs.clientId
-      tenantId: tenant().tenantId
-    }
-    databases: [
-      {
-        name: actualDatabaseName
-        availabilityZone: -1
-        zoneRedundant: false
-      }
-    ]
-    firewallRules: [
-      {
-        name: 'Azure Services'
-        startIpAddress: '0.0.0.1'
-        endIpAddress: '255.255.255.254'
-      }
-    ]
+    sqlServerName: sqlServerName
+    abbrs: abbrs
+    resourceToken: resourceToken
+    sqlDatabaseName: sqlDatabaseName
+    apiUserAssignedIdentityName: apiUserAssignedIdentity.outputs.name
+    apiUserAssignedIdentityPrincipalId: apiUserAssignedIdentity.outputs.principalId
+    apiUserAssignedIdentityClientId: apiUserAssignedIdentity.outputs.clientId
+    enableSQLScripts: enableSQLScripts
+    keyVaultName: keyVaultName
+    principalId: principalId
+    connectionStringKey: connectionStringKey
   }
 }
-
-// // Optional deployment script to add the API user to the database
-// module deploymentScript 'br/public:avm/res/resources/deployment-script:0.1.3' = {
-//   name: 'deployment-script'
-//   scope: rg
-//   params: {
-//     kind: 'AzureCLI'
-//     name: 'deployment-script'
-//     azCliVersion: '2.37.0'
-//     location: location
-//     retentionInterval: 'PT1H'
-//     timeout: 'PT5M'
-//     cleanupPreference: 'OnSuccess'
-//     environmentVariables:{
-//       secureList: [
-//         {
-//           name: 'DBNAME'
-//           value: actualDatabaseName
-//         }
-//         {
-//           name: 'DBSERVER'
-//           value: '${sqlServer.outputs.name}${environment().suffixes.sqlServerHostname}'
-//         }
-//         {
-//           name: 'UAMIOBJECTID-API'
-//           secureValue: apiUserAssignedIdentity.outputs.principalId
-//         }
-//         {
-//           name: 'UAMINAME-API'
-//           secureValue: apiUserAssignedIdentity.outputs.name
-//         }
-//         {
-//           name: 'UAMICLIENTID-SQLADMIN'
-//           secureValue: sqlAdminUserAssignedIdentity.outputs.clientId
-//         }
-//       ]
-//     }
-//     // Uses sqlAdminUserAssignedIdentity to run the script as elevated SQL admin
-//     // Adds the apiUserAssignedIdentity (normal app/api user) to the database and assigns it the db_datareader, db_datawriter, and db_ddladmin roles
-//     // More info: https://learn.microsoft.com/en-us/azure/app-service/tutorial-connect-msi-sql-database?tabs=windowsclient%2Cefcore%2Cdotnet#grant-permissions-to-managed-identity
-//     scriptContent: '''
-// wget https://github.com/microsoft/go-sqlcmd/releases/download/v0.8.1/sqlcmd-v0.8.1-linux-x64.tar.bz2
-// tar x -f sqlcmd-v0.8.1-linux-x64.tar.bz2 -C .
-
-// cat <<SCRIPT_END > ./initDb.sql
-// drop user if exists ${UAMINAME-API}
-// go
-// CREATE USER [${UAMINAME-API}] FROM EXTERNAL PROVIDER With OBJECT_ID='${UAMIOBJECTID-API}';
-// ALTER ROLE db_datareader ADD MEMBER [${UAMINAME-API}];
-// ALTER ROLE db_datawriter ADD MEMBER [${UAMINAME-API}];
-// ALTER ROLE db_ddladmin ADD MEMBER [${UAMINAME-API}];
-// GO
-// SCRIPT_END
-
-// ./sqlcmd -S ${DBSERVER} -d ${DBNAME} --authentication-method ActiveDirectoryManagedIdentity -U {UAMICLIENTID-SQLADMIN} -i ./initDb.sql
-//     '''
-//   }
-// }
-
-
 
 module storage 'br/public:avm/res/storage/storage-account:0.8.3' = {
   name: 'storage'
@@ -320,22 +214,6 @@ var storageEndpointConfig = {
   enableTable: false  // Required for Durable Functions and OpenAI triggers and bindings
   enableFiles: false   // Not required, used in legacy scenarios
   allowUserIdentityPrincipal: true   // Allow interactive user identity to access for testing and debugging
-}
-
-// Create a keyvault to store secrets
-module keyVault 'br/public:avm/res/key-vault/vault:0.5.1' = {
-  name: 'keyvault'
-  scope: rg
-  params: {
-    name: !empty(keyVaultName) ? keyVaultName : '${abbrs.keyVaultVaults}${resourceToken}'
-    location: location
-    tags: tags
-    enableRbacAuthorization: false
-    enableVaultForDeployment: false
-    enableVaultForTemplateDeployment: false
-    enablePurgeProtection: false
-    sku: 'standard'
-  }
 }
 
 // Consolidated Role Assignments
@@ -451,15 +329,15 @@ module apimApi 'br/public:avm/ptn/azd/apim-api:0.1.0' = if (useAPIM) {
 }
 
 // Data outputs
-output AZURE_SQL_CONNECTION_STRING_KEY string = 'Server=${sqlServer.outputs.fullyQualifiedDomainName}; Database=${actualDatabaseName}; Authentication=Active Directory Default; User Id=${apiUserAssignedIdentity.outputs.clientId}; TrustServerCertificate=True'
-output AZURE_SQL_SERVER_NAME string = sqlServer.outputs.fullyQualifiedDomainName
-output AZURE_SQL_DATABASE_NAME string = actualDatabaseName
+output AZURE_SQL_CONNECTION_STRING_KEY string = 'Server=${db.outputs.fullyQualifiedDomainName}; Database=${db.outputs.databaseName}; Authentication=Active Directory Default; User Id=${apiUserAssignedIdentity.outputs.clientId}; TrustServerCertificate=True'
+output AZURE_SQL_SERVER_NAME string = db.outputs.fullyQualifiedDomainName
+output AZURE_SQL_DATABASE_NAME string = db.outputs.databaseName
 output USER_ASSIGNED_IDENTITY_CLIENT_ID string = apiUserAssignedIdentity.outputs.clientId
 
 // App outputs
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = monitoring.outputs.connectionString
-output AZURE_KEY_VAULT_ENDPOINT string = keyVault.outputs.uri
-output AZURE_KEY_VAULT_NAME string = keyVault.outputs.name
+output AZURE_KEY_VAULT_ENDPOINT string = enableSQLScripts ? db.outputs.keyVaultUri : ''
+output AZURE_KEY_VAULT_NAME string = enableSQLScripts ? db.outputs.keyVaultName : ''
 output AZURE_LOCATION string = location
 output AZURE_TENANT_ID string = tenant().tenantId
 output API_BASE_URL string = useAPIM ? apimApi.outputs.serviceApiUri : api.outputs.SERVICE_API_URI
