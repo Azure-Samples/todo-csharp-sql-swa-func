@@ -105,11 +105,23 @@ The Azure Developer CLI includes many other commands to help with your Azure dev
 
 ### Roles
 
-This template creates a [managed identity](https://docs.microsoft.com/azure/active-directory/managed-identities-azure-resources/overview) for your app inside your Azure Active Directory tenant, and it is used to authenticate your app with Azure and other services that support Azure AD authentication like Key Vault via access policies. You will see principalId referenced in the infrastructure as code files, that refers to the id of the currently logged in Azure Developer CLI user, which will be granted access policies and permissions to run the application locally. To view your managed identity in the Azure Portal, follow these [steps](https://docs.microsoft.com/azure/active-directory/managed-identities-azure-resources/how-to-view-managed-identity-service-principal-portal).
+This template has been updated to be completely passwordless by default.  Identity and Managed Identity is used instead in call cases.  
 
-### Key Vault
+This template creates a [managed identity](https://docs.microsoft.com/azure/active-directory/managed-identities-azure-resources/overview) for your app inside your Azure Active Directory tenant, and it is used to authenticate your app with Azure and other services that support Azure AD authentication e.g. the Storage account used for the Function's AzureWebJobsStorage or the optional Key Vault via access policies. 
 
-This template uses [Azure Key Vault](https://docs.microsoft.com/azure/key-vault/general/overview) to securely store your Azure SQL connection string for the provisioned Azure SQL Database. Key Vault is a cloud service for securely storing and accessing secrets (API keys, passwords, certificates, cryptographic keys) and makes it simple to give other Azure services access to them. As you continue developing your solution, you may add as many secrets to your Key Vault as you require.
+You will see principalId referenced in the infrastructure as code files, that refers to the id of the currently logged in Azure Developer CLI user, which will be granted access policies and permissions to run the application locally. 
+
+Additionally you will see a User Assigned Managed Identity (UAMI) for the API (FunctionApp) that is used by the Function to call dependencies such as Storage, SQL and KeyVault.  If you set the optional enableSQLScripts flag to true, then an additional SQLAdmin UAMI will be created to do admin tasks like running scripts, and then the API UAMI will only be used for the app to read and write data.  To view your managed identity in the Azure Portal, follow these [steps](https://docs.microsoft.com/azure/active-directory/managed-identities-azure-resources/how-to-view-managed-identity-service-principal-portal).
+
+### Virtual Network and Private Endpoints (Optional)
+
+This template achieves an additional level of security by requiring all outbound traffic from your FunctionApp to its dependencies (e.g. Storage and SQL) using a VNET and Private Endpoints.  This ensures true network isolation between the FunctionApp and the dependencies with a trusted endpoint for communication across the subnet boundary.  To try this out select VNET_ENABLED=true when prompted.  
+
+*Note* if you enable VNET, you will not be able to access your cloud resources such as Storage or SQL from your development machine by default.  However you can mitigate this by adding your developer machine's IP address to the respective Firewall IP allow list for the service, or by VNET joining your development environment.  
+
+### Key Vault (Optional for running sql scripts)
+
+This template uses [Azure Key Vault](https://docs.microsoft.com/azure/key-vault/general/overview) to securely store your Azure SQL connection string for the provisioned Azure SQL Database, as well as to hold onto temporary values needed to run an admin script. Key Vault is a cloud service for securely storing and accessing secrets (API keys, passwords, certificates, cryptographic keys) and makes it simple to give other Azure services access to them. It is recommended to use Managed Identity whenever possible especially for Azure Services, however in cases where that is not possible, Key Vault is the recommendation.  
 
 ## Reporting Issues and Feedback
 
