@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Azure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Data.SqlClient;
 
 namespace SimpleTodo.Api;
 class Program
@@ -12,16 +13,19 @@ class Program
         var credential = new DefaultAzureCredential();
         var host = new HostBuilder()
             .ConfigureFunctionsWorkerDefaults()
-            .ConfigureAppConfiguration(config => 
-                config.AddAzureKeyVault(new Uri(Environment.GetEnvironmentVariable("AZURE_KEY_VAULT_ENDPOINT")!), credential))
+            // .ConfigureAppConfiguration(config => 
+            //     config.AddAzureKeyVault(new Uri(Environment.GetEnvironmentVariable("AZURE_KEY_VAULT_ENDPOINT")!), credential))
             .ConfigureServices((config, services) =>
             {
                 services.AddScoped<ListsRepository>();
                 services.AddDbContext<TodoDb>(options =>
                 {
-                    var connectionString = config.Configuration[config.Configuration["AZURE_SQL_CONNECTION_STRING_KEY"]];
-                    options.UseSqlServer(connectionString, sqlOptions =>
-                    sqlOptions.EnableRetryOnFailure());
+                    // Get connection string from Key Vault
+                    var connectionString = Environment.GetEnvironmentVariable("AZURE_SQL_CONNECTION_STRING_KEY");
+                    
+                    // The connection string should already be configured for AAD authentication from our Bicep template
+                    options.UseSqlServer(connectionString, sqlOptions => 
+                        sqlOptions.EnableRetryOnFailure());
                 });
             })
         .Build();
