@@ -258,6 +258,19 @@ module storagePrivateEndpoint 'app/storage-PrivateEndpoint.bicep' = if (vnetEnab
   }
 }
 
+// SQL Server private endpoint
+module sqlPrivateEndpoint 'app/sql-PrivateEndpoint.bicep' = if (vnetEnabled) {
+  name: 'sqlPrivateEndpoint'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    virtualNetworkName: !empty(vNetName) ? vNetName : '${abbrs.networkVirtualNetworks}${resourceToken}'
+    subnetName: vnetEnabled ? serviceVirtualNetwork.outputs.sqlSubnetName : ''
+    sqlServerName: db.outputs.name
+  }
+}
+
 // Monitor application with Azure Monitor - Log Analytics and Application Insights
 module logAnalytics 'br/public:avm/res/operational-insights/workspace:0.11.1' = {
   name: '${uniqueString(deployment().name, location)}-loganalytics'

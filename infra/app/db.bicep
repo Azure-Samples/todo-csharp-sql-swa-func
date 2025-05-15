@@ -12,6 +12,7 @@ param resourceToken string
 param keyVaultName string = ''
 param principalId string = ''
 param connectionStringKey string = 'AZURE-SQL-CONNECTION-STRING'
+param vnetEnabled bool = false
 
 // SQL admin user assigned identity - only created if enableSQLScripts is true
 // This identity is used for running SQL scripts with elevated permissions
@@ -34,7 +35,7 @@ module sqlServer 'br/public:avm/res/sql/server:0.16.1' = {
     name: !empty(sqlServerName) ? sqlServerName : '${abbrs.sqlServers}${resourceToken}'
     location: location
     tags: tags
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: vnetEnabled ? 'Disabled' : 'Enabled'
     administrators: {
       azureADOnlyAuthentication: true
       login: apiUserAssignedIdentityName
@@ -49,13 +50,13 @@ module sqlServer 'br/public:avm/res/sql/server:0.16.1' = {
         zoneRedundant: false
       }
     ]
-    firewallRules: [
+    firewallRules: !vnetEnabled ? [
       {
         name: 'Azure Services'
         startIpAddress: '0.0.0.1'
         endIpAddress: '255.255.255.254'
       }
-    ]
+    ] : []
   }
 }
 
